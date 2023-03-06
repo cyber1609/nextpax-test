@@ -93,6 +93,12 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
+        'sqlite_test' => [
+            'driver'   => 'sqlite',
+            'database' => ':memory:',
+            'prefix'   => '',
+        ],
+
     ],
 
     /*
@@ -146,6 +152,12 @@ return [
             'database' => env('REDIS_CACHE_DB', '1'),
         ],
 
+    ],
+
+    'testing' => [
+        'default_connection' => 'sqlite_testing',
+        'migrations' => 'migrations',
+        'seeds' => true,
     ],
 
 ];

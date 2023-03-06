@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('availabilities', function (Blueprint $table) {
             $table->id();
-            $table->string('property_id', 36)->unique();
+            $table->string('property_id', 36);
             $table->date('date');
             $table->integer('quantity');
             $table->boolean('arrival_allowed');
