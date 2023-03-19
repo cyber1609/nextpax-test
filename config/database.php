@@ -94,9 +94,9 @@ return [
         ],
 
         'sqlite_test' => [
-            'driver'   => 'sqlite',
+            'driver' => 'sqlite',
             'database' => ':memory:',
-            'prefix'   => '',
+            'prefix' => '',
         ],
 
     ],

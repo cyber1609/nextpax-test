@@ -11,7 +11,9 @@ use Illuminate\Support\Collection;
 class LengthOfStayService
 {
     private array $lengthOfStayPricing = [];
+
     private array $pricePerNightPerNumberOfPersons;
+
     private array $availableDepartureDates;
 
     public function getLengthOfStayPricing(): array
@@ -35,7 +37,7 @@ class LengthOfStayService
 
     public function getLengthOfStayPricingForDate($date, $additionalDays = 0, $additionalPrice = 0): void
     {
-        if (!isset($this->pricePerNightPerNumberOfPersons[$date->format('Y-m-d')])) {
+        if (! isset($this->pricePerNightPerNumberOfPersons[$date->format('Y-m-d')])) {
             return;
         }
 
@@ -47,6 +49,7 @@ class LengthOfStayService
                     $this->lengthOfStayPricing[$dateInResult][$persons][$numberOfNights + $additionalDays][] = min($prices) + $additionalPrice;
                 }
             }
+
             return;
         }
 
@@ -57,7 +60,7 @@ class LengthOfStayService
 
             for ($days = 1; $days <= $pricePerNight[0]['maxLength']; $days++) {
                 $departureDate = Carbon::create($date)->addDays($days);
-                if (!in_array($departureDate, $this->availableDepartureDates)) {
+                if (! in_array($departureDate, $this->availableDepartureDates)) {
                     continue;
                 }
                 $daysLeft = $days;

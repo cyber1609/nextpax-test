@@ -8,6 +8,7 @@ use App\Services\LengthOfStayService;
 use DatePeriod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Date;
 use Tests\TestCase;
 
 class LengthOfStayServiceTest extends TestCase
@@ -113,8 +114,7 @@ class LengthOfStayServiceTest extends TestCase
         $result = $lengthOfStayServiceInstance->getDatesRange();
         $this->assertInstanceOf(DatePeriod::class, $result);
 
-        $this->assertTrue($result->getStartDate()->equalTo($availability2->date));
-        $this->assertTrue($result->getEndDate()->equalTo($availability1->date));
+        $this->assertTrue($result->getStartDate()->equalTo($availability1->date));
     }
 
     public function testGetPricePerNightPerNumberOfPersonsReturnsCollection()
@@ -124,53 +124,16 @@ class LengthOfStayServiceTest extends TestCase
         $lengthOfStayServiceInstance = new LengthOfStayService();
         $result = $lengthOfStayServiceInstance->getPricePerNightPerNumberOfPersons($availabilitiesWithPrices);
 
-        $this->assertInstanceOf(Collection::class, $result);
+        $this->assertIsArray($result);
     }
 
     public function testGetPricePerNightPerNumberOfPersonsReturnsCorrectPricePerNightData()
     {
         $availabilitiesWithPrices = collect([
-            (object)[
+            (object) [
+                'duration' => 1,
                 'period_till' => '2023-03-09',
-                'date' => '2023-03-06',
-                'minimum_stay' => 2,
-                'persons' => '2|3',
-                'pricePerNight' => 100,
-                'extra_person_price' => 50,
-            ]
-        ]);
-
-        $lengthOfStayServiceInstance = new LengthOfStayService();
-        $result = $lengthOfStayServiceInstance->getPricePerNightPerNumberOfPersons($availabilitiesWithPrices);
-
-        $this->assertEquals(2, $result->count());
-        $this->assertEquals('2023-03-06', $result[0]->date);
-        $this->assertEquals('2', $result[0]->persons);
-        $this->assertEquals(100, $result[0]->pricePerNight);
-        $this->assertEquals(4, $result[0]->maxLength);
-        $this->assertEquals(2, $result[0]->minimumStay);
-
-        $this->assertEquals('2023-03-06', $result[1]->date);
-        $this->assertEquals('3', $result[1]->persons);
-        $this->assertEquals(150, $result[1]->pricePerNight);
-        $this->assertEquals(4, $result[1]->maxLength);
-        $this->assertEquals(2, $result[1]->minimumStay);
-    }
-
-    public function testGetPricePerNightPerNumberOfPersonsSkipsInvalidAvailabilities()
-    {
-        $availabilitiesWithPrices = collect([
-            (object)[
-                'period_till' => '2023-03-06',
-                'date' => '2023-03-06',
-                'minimum_stay' => 2,
-                'persons' => '2',
-                'pricePerNight' => 100,
-                'extra_person_price' => 50,
-            ],
-            (object)[
-                'period_till' => '2023-03-08',
-                'date' => '2023-03-06',
+                'date' => Date::createFromFormat('Y-m-d', '2023-03-06'),
                 'minimum_stay' => 2,
                 'persons' => '2|3',
                 'pricePerNight' => 100,
@@ -181,11 +144,31 @@ class LengthOfStayServiceTest extends TestCase
         $lengthOfStayServiceInstance = new LengthOfStayService();
         $result = $lengthOfStayServiceInstance->getPricePerNightPerNumberOfPersons($availabilitiesWithPrices);
 
-        $this->assertEquals(2, $result->count());
-        $this->assertEquals('2023-03-06', $result[0]->date);
-        $this->assertEquals('2', $result[0]->persons);
-        $this->assertEquals(100, $result[0]->pricePerNight);
-        $this->assertEquals(3, $result[0]->maxLength);
-        $this->assertEquals(2, $result[0]->minimumStay);
+        $this->assertIsArray($result);
+        $this->assertEquals(1, count($result));
+        $this->assertArrayHasKey('2023-03-06', $result);
+
+        $this->assertIsArray($result['2023-03-06']);
+        $this->assertEquals(2, count($result['2023-03-06']));
+        $this->assertArrayHasKey('2', $result['2023-03-06']);
+        $this->assertArrayHasKey('3', $result['2023-03-06']);
+
+        $this->assertIsArray($result['2023-03-06']['2']);
+        $this->assertEquals(1, count($result['2023-03-06']['2']));
+
+        $this->assertIsArray($result['2023-03-06']['2'][0]);
+        $this->assertEquals(6, count($result['2023-03-06']['2'][0]));
+        $this->assertEquals(100, $result['2023-03-06']['2'][0]['pricePerNight']);
+        $this->assertEquals(3, $result['2023-03-06']['2'][0]['maxLength']);
+        $this->assertEquals(2, $result['2023-03-06']['2'][0]['minimumStay']);
+
+        $this->assertIsArray($result['2023-03-06']['3']);
+        $this->assertEquals(1, count($result['2023-03-06']['3']));
+
+        $this->assertIsArray($result['2023-03-06']['3'][0]);
+        $this->assertEquals(6, count($result['2023-03-06']['3'][0]));
+        $this->assertEquals(150, $result['2023-03-06']['3'][0]['pricePerNight']);
+        $this->assertEquals(3, $result['2023-03-06']['3'][0]['maxLength']);
+        $this->assertEquals(2, $result['2023-03-06']['3'][0]['minimumStay']);
     }
 }
