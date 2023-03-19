@@ -7,12 +7,11 @@ use Carbon\Carbon;
 use DateInterval;
 use DatePeriod;
 use Illuminate\Support\Collection;
-use stdClass;
 
 class LengthOfStayService
 {
     private array $lengthOfStayPricing = [];
-    private Collection $pricePerNightPerNumberOfPersons;
+    private array $pricePerNightPerNumberOfPersons;
     private array $availableDepartureDates;
 
     public function getLengthOfStayPricing(): array
@@ -21,56 +20,66 @@ class LengthOfStayService
 
         $datesRange = $this->getDatesRange();
 
-        $this->pricePerNightPerNumberOfPersons = $this->getPricePerNightPerNumberOfPersons($availabilitiesWithPrices);
+        $this->pricePerNightPerNumberOfPersons = ($this->getPricePerNightPerNumberOfPersons($availabilitiesWithPrices));
 
         $this->availableDepartureDates = $this->getAvailableDepartureDates();
 
         foreach ($datesRange as $date) {
             $this->getLengthOfStayPricingForDate($date);
         }
+
+        ksort($this->lengthOfStayPricing);
+
         return $this->lengthOfStayPricing;
     }
 
     public function getLengthOfStayPricingForDate($date, $additionalDays = 0, $additionalPrice = 0): void
     {
-        $this->pricePerNightPerNumberOfPersons->where('date', '=', $date)
-            ->sortBy('pricePerNight')
-            ->groupBy('persons')
-            ->each(function ($infoPerPersons, $persons) use ($date, $additionalDays, $additionalPrice) {
+        if (!isset($this->pricePerNightPerNumberOfPersons[$date->format('Y-m-d')])) {
+            return;
+        }
 
-                if ($infoPerPersons->first()->maxLength < $infoPerPersons->first()->duration && in_array($date, $this->availableDepartureDates)) {
-                    $dateInResult = Carbon::create($date)->subDays($additionalDays)->format('Y-m-d');
-                    $this->lengthOfStayPricing[$dateInResult][$persons][$infoPerPersons->first()->duration + $additionalDays][] = number_format(($infoPerPersons->first()->pricePerDuration + $additionalPrice)/100, 2, '.', ' ');
+        $dateInResult = Carbon::create($date)->subDays($additionalDays)->format('Y-m-d');
+
+        if (isset($this->lengthOfStayPricing[$date->format('Y-m-d')])) {
+            foreach ($this->lengthOfStayPricing[$date->format('Y-m-d')] as $persons => $pricePerNumberOfNights) {
+                foreach ($pricePerNumberOfNights as $numberOfNights => $prices) {
+                    $this->lengthOfStayPricing[$dateInResult][$persons][$numberOfNights + $additionalDays][] = min($prices) + $additionalPrice;
+                }
+            }
+            return;
+        }
+
+        foreach ($this->pricePerNightPerNumberOfPersons[$date->format('Y-m-d')] as $persons => $pricePerNight) {
+            if ($pricePerNight[0]['maxLength'] < $pricePerNight[0]['duration'] && in_array(Carbon::create($date)->addDays($pricePerNight[0]['duration']), $this->availableDepartureDates)) {
+                $this->lengthOfStayPricing[$dateInResult][$persons][$pricePerNight[0]['duration'] + $additionalDays][] = $pricePerNight[0]['pricePerDuration'] + $additionalPrice;
+            }
+
+            for ($days = 1; $days <= $pricePerNight[0]['maxLength']; $days++) {
+                $departureDate = Carbon::create($date)->addDays($days);
+                if (!in_array($departureDate, $this->availableDepartureDates)) {
+                    continue;
+                }
+                $daysLeft = $days;
+                $price = $additionalPrice;
+                foreach ($pricePerNight as $priceData) {
+                    if ($daysLeft >= $priceData['duration'] && $priceData['pricePerDuration']) {
+                        $price += $priceData['pricePerDuration'];
+                        $daysLeft -= intdiv($daysLeft, $priceData['duration']) * $priceData['duration'];
+                    } else {
+                        $numberOfDaysWithThisPrice = intdiv($daysLeft, $priceData['minimumStay']) * $priceData['minimumStay'];
+                        $price += $priceData['pricePerNight'] * $numberOfDaysWithThisPrice;
+                        $daysLeft -= $numberOfDaysWithThisPrice;
+                    }
                 }
 
-                for ($days = 1; $days <= $infoPerPersons->first()->maxLength; $days++) {
-                    $departureDate = Carbon::create($date)->addDays($days - 1);
-                    if (in_array($departureDate->format('Y-m-d'), $this->availableDepartureDates)) {
-                        continue;
-                    }
-                    $daysLeft = $days;
-                    $price = $additionalPrice;
-                    $infoPerPersons->each(function ($priceData) use (&$daysLeft, &$price) {
-                        if ($daysLeft >= $priceData->duration && $priceData->pricePerDuration) {
-                            $price += $priceData->pricePerDuration;
-                            $daysLeft -= intdiv($daysLeft, $priceData->duration) * $priceData->duration;
-                        } else {
-                            $price += $priceData->pricePerNight
-                                * intdiv($daysLeft, $priceData->minimumStay)
-                                * $priceData->minimumStay;
-                            $daysLeft -= intdiv($daysLeft, $priceData->minimumStay) * $priceData->minimumStay;
-                        }
-                    });
+                $this->lengthOfStayPricing[$dateInResult][$persons][$days + $additionalDays][] = $price;
 
-                    $dateInResult = Carbon::create($date)->subDays($additionalDays)->format('Y-m-d');
-
-                    $this->lengthOfStayPricing[$dateInResult][$persons][$days+$additionalDays][] = number_format($price/100, 2, '.', ' ');
-
-                    if ($this->pricePerNightPerNumberOfPersons->where('date', '=', Carbon::create($date)->addDays($days))->isNotEmpty()) {
-                        $this->getLengthOfStayPricingForDate(Carbon::create($date)->addDays($days)->toDateTime(), $days + $additionalDays, $price);
-                    }
+                if (isset($this->pricePerNightPerNumberOfPersons[Carbon::create($date)->addDays($days)->format('Y-m-d')])) {
+                    $this->getLengthOfStayPricingForDate(Carbon::create($date)->addDays($days)->toDateTime(), $days + $additionalDays, $price);
                 }
-            });
+            }
+        }
     }
 
     public function getAvailabilitiesWithPrices(): Collection
@@ -91,9 +100,9 @@ class LengthOfStayService
             });
     }
 
-    public function getPricePerNightPerNumberOfPersons(Collection $availabilitiesWithPrices): Collection
+    public function getPricePerNightPerNumberOfPersons(Collection $availabilitiesWithPrices): array
     {
-        $pricePerNightPerNumberOfPersons = collect();
+        $pricePerNightPerNumberOfPersons = [];
 
         $availabilitiesWithPrices->each(function ($availabilityWithPrice) use (&$pricePerNightPerNumberOfPersons) {
             $maxLength = Carbon::createFromDate($availabilityWithPrice->period_till)->diffInDays(Carbon::createFromDate($availabilityWithPrice->date)) + 1;
@@ -103,30 +112,40 @@ class LengthOfStayService
 
             $persons = explode('|', $availabilityWithPrice->persons);
             foreach ($persons as $index => $person) {
-                $pricePerNightData = new StdClass();
-                $pricePerNightData->date = $availabilityWithPrice->date;
-                $pricePerNightData->persons = $person;
-                $pricePerNightData->duration = $availabilityWithPrice->duration;
-                $pricePerNightData->pricePerNight = $availabilityWithPrice->duration !== 1 ? 0 : $availabilityWithPrice->pricePerNight + $index * $availabilityWithPrice->extra_person_price;
-                $pricePerNightData->pricePerDuration = $availabilityWithPrice->duration !== 1 ? $availabilityWithPrice->amount + $index * $availabilityWithPrice->extra_person_price : 0;
-                $pricePerNightData->maxLength = $maxLength;
-                $pricePerNightData->minimumStay = $availabilityWithPrice->minimum_stay;
-                $pricePerNightPerNumberOfPersons->push($pricePerNightData);
+                $pricePerNightData = [];
+                $pricePerNightData['duration'] = $availabilityWithPrice->duration;
+                $pricePerNightData['netPricePerNight'] = $availabilityWithPrice->pricePerNight + $index * $availabilityWithPrice->extra_person_price;
+                $pricePerNightData['pricePerNight'] = $availabilityWithPrice->duration !== 1 ? 0 : $pricePerNightData['netPricePerNight'];
+                $pricePerNightData['pricePerDuration'] = $availabilityWithPrice->duration !== 1 ? $availabilityWithPrice->amount + $index * $availabilityWithPrice->extra_person_price : 0;
+                $pricePerNightData['maxLength'] = $maxLength;
+                $pricePerNightData['minimumStay'] = $availabilityWithPrice->minimum_stay;
+                $pricePerNightPerNumberOfPersons[$availabilityWithPrice->date->format('Y-m-d')][$person][] = $pricePerNightData;
             }
         });
+
+        foreach ($pricePerNightPerNumberOfPersons as $date => &$prices) {
+            foreach ($prices as $person => &$data) {
+                usort($data, function ($a, $b) {
+                    return $a['netPricePerNight'] <=> $b['netPricePerNight'];
+                });
+            }
+        }
+
         return $pricePerNightPerNumberOfPersons;
     }
 
     public function getDatesRange(): DatePeriod
     {
-        $dateFrom = Availability::orderBy('date', 'ASC')->pluck('date')->first();
-        $dateTo = Availability::orderBy('date', 'DESC')->pluck('date')->first();
-        $interval = new DateInterval('P1D');
-        return new DatePeriod($dateFrom, $interval, $dateTo);
+        $start = Availability::orderBy('date', 'DESC')->pluck('date')->first();
+        $end = Availability::orderBy('date', 'ASC')->pluck('date')->first();
+        $diff = $end->diff($start);
+        $interval = DateInterval::createFromDateString('-1 day');
+
+        return new DatePeriod($start, $interval, $diff->days);
     }
 
     private function getAvailableDepartureDates(): array
     {
-        return Availability::where('departure_allowed',  true)->pluck('date')->toArray();
+        return Availability::where('departure_allowed', true)->pluck('date')->toArray();
     }
 }
