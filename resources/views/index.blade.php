@@ -29,7 +29,7 @@
                 <td class="border">{{$date}}</td>
                 <td class="border">{{$persons}}</td>
                 @for($day = 1; $day <= 21; $day++)
-                    <td class="border">{{$personData[$day] ?? '0.00'}}</td>
+                    <td class="border">{{isset($personData[$day]) ? min($personData[$day]) : '0.00'}}</td>
                 @endfor
             </tr>
         @endforeach
